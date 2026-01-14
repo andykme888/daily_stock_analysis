@@ -65,6 +65,9 @@ class Config:
     
     # 飞书 Webhook
     feishu_webhook_url: Optional[str] = None
+
+    # PushPlus Token (新增)
+    pushplus_token: Optional[str] = None
     
     # Telegram 配置（需要同时配置 Bot Token 和 Chat ID）
     telegram_bot_token: Optional[str] = None  # Bot Token（@BotFather 获取）
@@ -181,6 +184,7 @@ class Config:
             serpapi_keys=serpapi_keys,
             wechat_webhook_url=os.getenv('WECHAT_WEBHOOK_URL'),
             feishu_webhook_url=os.getenv('FEISHU_WEBHOOK_URL'),
+            pushplus_token=os.getenv('PUSHPLUS_TOKEN'),  # 加载 PushPlus Token
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
             email_sender=os.getenv('EMAIL_SENDER'),
@@ -231,6 +235,7 @@ class Config:
         has_notification = (
             self.wechat_webhook_url or 
             self.feishu_webhook_url or
+            self.pushplus_token or  # 检查 PushPlus
             (self.telegram_bot_token and self.telegram_chat_id) or
             (self.email_sender and self.email_password)
         )
@@ -264,6 +269,7 @@ if __name__ == "__main__":
     print(f"数据库路径: {config.database_path}")
     print(f"最大并发数: {config.max_workers}")
     print(f"调试模式: {config.debug}")
+    print(f"PushPlus Token: {config.pushplus_token}") # 打印测试
     
     # 验证配置
     warnings = config.validate()
