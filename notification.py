@@ -10,6 +10,7 @@ A股自选股智能分析系统 - 通知层
 3. 多渠道推送（自动识别）：
    - 企业微信 Webhook
    - 飞书 Webhook
+   - PushPlus 推送 (新增)
    - Telegram Bot
    - 邮件 SMTP
 """
@@ -34,12 +35,13 @@ logger = logging.getLogger(__name__)
 
 class NotificationChannel(Enum):
     """通知渠道类型"""
-    WECHAT = "wechat"      # 企业微信
-    FEISHU = "feishu"      # 飞书
-    TELEGRAM = "telegram"  # Telegram
-    EMAIL = "email"        # 邮件
-    CUSTOM = "custom"      # 自定义 Webhook
-    UNKNOWN = "unknown"    # 未知
+    WECHAT = "wechat"       # 企业微信
+    FEISHU = "feishu"       # 飞书
+    PUSHPLUS = "pushplus"   # PushPlus (新增)
+    TELEGRAM = "telegram"   # Telegram
+    EMAIL = "email"         # 邮件
+    CUSTOM = "custom"       # 自定义 Webhook
+    UNKNOWN = "unknown"     # 未知
 
 
 # SMTP 服务器配置（自动识别）
@@ -79,6 +81,7 @@ class ChannelDetector:
         names = {
             NotificationChannel.WECHAT: "企业微信",
             NotificationChannel.FEISHU: "飞书",
+            NotificationChannel.PUSHPLUS: "PushPlus",
             NotificationChannel.TELEGRAM: "Telegram",
             NotificationChannel.EMAIL: "邮件",
             NotificationChannel.CUSTOM: "自定义Webhook",
@@ -99,6 +102,7 @@ class NotificationService:
     支持的渠道：
     - 企业微信 Webhook
     - 飞书 Webhook
+    - PushPlus
     - Telegram Bot
     - 邮件 SMTP
     
@@ -116,6 +120,9 @@ class NotificationService:
         # 各渠道的 Webhook URL
         self._wechat_url = config.wechat_webhook_url
         self._feishu_url = getattr(config, 'feishu_webhook_url', None)
+        
+        # PushPlus Token (新增)
+        self._pushplus_token = getattr(config, 'pushplus_token', None)
         
         # Telegram 配置
         self._telegram_config = {
@@ -162,6 +169,10 @@ class NotificationService:
         # 飞书
         if self._feishu_url:
             channels.append(NotificationChannel.FEISHU)
+
+        # PushPlus (新增)
+        if self._pushplus_token:
+            channels.append(NotificationChannel.PUSHPLUS)
         
         # Telegram
         if self._is_telegram_configured():
@@ -1349,6 +1360,56 @@ class NotificationService:
             logger.error(f"飞书请求失败: HTTP {response.status_code}")
             logger.error(f"响应内容: {response.text}")
             return False
+            
+    def send_to_pushplus(self, content: str) -> bool:
+        """
+        推送消息到 PushPlus (微信推送)
+        
+        PushPlus 接口格式：
+        POST http://www.pushplus.plus/send
+        {
+            "token": "xxx",
+            "title": "标题",
+            "content": "内容",
+            "template": "markdown"
+        }
+        
+        Args:
+            content: 消息内容（支持 Markdown）
+            
+        Returns:
+            是否发送成功
+        """
+        if not self._pushplus_token:
+            logger.warning("PushPlus Token 未配置，跳过推送")
+            return False
+            
+        url = "http://www.pushplus.plus/send"
+        title = f"{datetime.now().strftime('%Y-%m-%d')} A股分析报告"
+        
+        payload = {
+            "token": self._pushplus_token,
+            "title": title,
+            "content": content,
+            "template": "markdown"
+        }
+        
+        try:
+            response = requests.post(url, json=payload, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    logger.info("PushPlus 消息发送成功")
+                    return True
+                else:
+                    logger.error(f"PushPlus 返回错误: {result.get('msg')}")
+                    return False
+            else:
+                logger.error(f"PushPlus 请求失败: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            logger.error(f"发送 PushPlus 消息失败: {e}")
+            return False
     
     def send_to_email(self, content: str, subject: Optional[str] = None) -> bool:
         """
@@ -1776,6 +1837,8 @@ class NotificationService:
                     result = self.send_to_wechat(content)
                 elif channel == NotificationChannel.FEISHU:
                     result = self.send_to_feishu(content)
+                elif channel == NotificationChannel.PUSHPLUS:
+                    result = self.send_to_pushplus(content)
                 elif channel == NotificationChannel.TELEGRAM:
                     result = self.send_to_telegram(content)
                 elif channel == NotificationChannel.EMAIL:
@@ -1988,14 +2051,13 @@ if __name__ == "__main__":
     
     # 显示检测到的渠道
     print(f"=== 通知渠道检测 ===")
-    print(f"当前渠道: {service.get_channel_name()}")
-    print(f"渠道类型: {service.get_channel()}")
+    print(f"当前渠道: {service.get_channel_names()}")
     print(f"服务可用: {service.is_available()}")
     
     # 生成日报
     print("\n=== 生成日报测试 ===")
     report = service.generate_daily_report(test_results)
-    print(report)
+    # print(report)
     
     # 保存到文件
     print("\n=== 保存日报 ===")
@@ -2004,7 +2066,7 @@ if __name__ == "__main__":
     
     # 推送测试
     if service.is_available():
-        print(f"\n=== 推送测试（{service.get_channel_name()}）===")
+        print(f"\n=== 推送测试（{service.get_channel_names()}）===")
         success = service.send(report)
         print(f"推送结果: {'成功' if success else '失败'}")
     else:
